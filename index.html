@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>File Editor</title>
-  <strong>made by Daniel</strong>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -117,7 +117,10 @@
   </style>
 </head>
 <body>
-  <h1>File Editor (and download it)</h1>
+  <h1>∆File Editor∆</h1>
+
+  <img src="https://cdn-icons-png.flaticon.com/512/1159/1159633.png" style="position:absolute; top:10px; right:10px; width:60px;">
+  <div style="position: fixed; bottom: 10px; right: 10px; border: 2px dashed #61dafb; padding: 8px 12px; border-radius: 10px; color: #61dafb;">Made by Daniel</div>
 
   <div class="toolbar">
     <button onclick="showModal('file')">Create File</button>
@@ -125,15 +128,14 @@
     <button onclick="backFolder()">Back</button>
     <button onclick="downloadZip()">Download ZIP</button>
     <button onclick="testView()">Test View</button>
+    <button onclick="document.getElementById('fileUpload').click()">Upload Files</button>
+    <input type="file" id="fileUpload" multiple style="display:none" onchange="handleUpload(event)">
   </div>
 
   <div class="file-list" id="fileList"></div>
-
   <div class="log-list" id="logList"></div>
-
   <div class="loading" id="loading">Create the file pls wait...</div>
 
-  <!-- File Modal -->
   <div class="modal" id="fileModal">
     <div class="modal-content">
       <h2>FILE EDITOR</h2>
@@ -145,7 +147,6 @@
     </div>
   </div>
 
-  <!-- Folder Modal -->
   <div class="modal" id="folderModal">
     <div class="modal-content">
       <h2>Create Folder</h2>
@@ -156,7 +157,6 @@
     </div>
   </div>
 
-  <!-- File Viewer Modal -->
   <div class="modal" id="viewModal">
     <div class="modal-content">
       <h2>File Viewer</h2>
@@ -192,6 +192,7 @@
       log(`√ ${getTime()} created file "${name}"`);
       render();
       closeModal('file');
+      saveToLocal();
     }
 
     function createFolder() {
@@ -202,6 +203,7 @@
       log(`√ ${getTime()} created folder "${name}"`);
       render();
       closeModal('folder');
+      saveToLocal();
     }
 
     function traverse(obj, path) {
@@ -250,13 +252,29 @@
     }
 
     function downloadZip() {
-      alert('Download as ZIP feature is under development.');
+      const zip = new JSZip();
+      function addFiles(path, obj) {
+        for (let key in obj) {
+          const val = obj[key];
+          if (typeof val === 'string') {
+            zip.file([...path, key].join('/'), val);
+          } else {
+            addFiles([...path, key], val);
+          }
+        }
+      }
+      addFiles([], fileSystem);
+      zip.generateAsync({ type: "blob" }).then(content => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(content);
+        a.download = "projectmoto.zip";
+        a.click();
+      });
     }
 
     function testView() {
       const folder = traverse(fileSystem, currentPath);
       const blobMap = {};
-
       function buildBlobs(path, tree) {
         for (let key in tree) {
           const val = tree[key];
@@ -268,18 +286,29 @@
           }
         }
       }
-
       buildBlobs([], fileSystem);
-
       const frame = document.getElementById('previewFrame');
-      if (blobMap['index.html']) {
-        const htmlContent = fileSystem['index.html'];
-        const blob = new Blob([htmlContent], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        frame.src = url;
+      if (fileSystem['index.html']) {
+        const blob = new Blob([fileSystem['index.html']], { type: 'text/html' });
+        frame.src = URL.createObjectURL(blob);
         frame.style.display = 'block';
       } else {
-        alert('index.html not found in root.');
+        alert('san mo nilagay ang index.html? di ko ma kita.');
+      }
+    }
+
+    function handleUpload(event) {
+      const files = event.target.files;
+      for (const file of files) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          const folder = traverse(fileSystem, currentPath);
+          folder[file.name] = e.target.result;
+          log(`↑ ${getTime()} uploaded "${file.name}"`);
+          render();
+          saveToLocal();
+        };
+        reader.readAsText(file);
       }
     }
 
@@ -290,19 +319,32 @@
       log(`× ${getTime()} deleted file "${lastOpenedFile}"`);
       closeModal('view');
       render();
+      saveToLocal();
     };
 
     document.getElementById('saveButton').onclick = () => {
       if (!lastOpenedFile) return;
       const folder = traverse(fileSystem, currentPath);
       folder[lastOpenedFile] = document.getElementById('viewContent').value;
-      log(`√ ${getTime()} saved file "${lastOpenedFile}"`);
+      log(`✅${getTime()}= successfully created:"${lastOpenedFile}"`);
       closeModal('view');
       render();
+      saveToLocal();
     };
 
+    function saveToLocal() {
+      localStorage.setItem('virtualFileSystem', JSON.stringify(fileSystem));
+    }
+
+    function loadFromLocal() {
+      const saved = localStorage.getItem('virtualFileSystem');
+      if (saved) fileSystem = JSON.parse(saved);
+    }
+
+    window.addEventListener('beforeunload', saveToLocal);
+    loadFromLocal();
     render();
   </script>
 </body>
   </html>
-      
+  
