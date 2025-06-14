@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>File Editor</title>
+  <strong>made by Daniel</strong>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    body {
+      margin: 0;
+      background: #0f111a;
+      color: #e4e4e4;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #61dafb;
+    }
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    button {
+      background: #282c34;
+      border: none;
+      padding: 10px 15px;
+      color: white;
+      cursor: pointer;
+      border-radius: 5px;
+      transition: 0.3s;
+    }
+    button:hover {
+      background: #61dafb;
+      color: black;
+    }
+    .file-list, .log-list {
+      background: #1c1f2b;
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 10px;
+    }
+    .file-list div, .log-list div {
+      padding: 8px;
+      border-bottom: 1px solid #333;
+      cursor: pointer;
+    }
+    .file-list div:hover, .log-list div:hover {
+      background: #2c313c;
+    }
+    .modal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      display: none;
+      z-index: 999;
+    }
+    .modal-content {
+      background: #20232a;
+      padding: 20px;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 600px;
+    }
+    .modal-content textarea {
+      width: 100%;
+      height: 300px;
+      background: #0f111a;
+      color: #00ff90;
+      border: none;
+      padding: 10px;
+      border-radius: 5px;
+      font-family: monospace;
+    }
+    .modal-content input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      border: none;
+      border-radius: 5px;
+    }
+    .loading {
+      display: none;
+      color: #61dafb;
+      text-align: center;
+      margin: 20px;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .log-list {
+      margin-top: 20px;
+    }
+    .log-list .log {
+      display: flex;
+      justify-content: space-between;
+    }
+    iframe {
+      width: 100%;
+      height: 500px;
+      border: 2px solid #61dafb;
+      margin-top: 20px;
+      border-radius: 10px;
+      background: white;
+    }
+  </style>
+</head>
+<body>
+  <h1>File Editor (and download it)</h1>
+
+  <div class="toolbar">
+    <button onclick="showModal('file')">Create File</button>
+    <button onclick="showModal('folder')">Create Folder</button>
+    <button onclick="backFolder()">Back</button>
+    <button onclick="downloadZip()">Download ZIP</button>
+    <button onclick="testView()">Test View</button>
+  </div>
+
+  <div class="file-list" id="fileList"></div>
+
+  <div class="log-list" id="logList"></div>
+
+  <div class="loading" id="loading">Create the file pls wait...</div>
+
+  <!-- File Modal -->
+  <div class="modal" id="fileModal">
+    <div class="modal-content">
+      <h2>FILE EDITOR</h2>
+      <input id="fileName" placeholder="Enter file name with extension" />
+      <textarea id="fileContent" placeholder="Enter your code here..."></textarea>
+      <br><br>
+      <button onclick="createFile()">Create File</button>
+      <button onclick="closeModal('file')">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Folder Modal -->
+  <div class="modal" id="folderModal">
+    <div class="modal-content">
+      <h2>Create Folder</h2>
+      <input id="folderName" placeholder="Enter folder name" />
+      <br><br>
+      <button onclick="createFolder()">Create Folder</button>
+      <button onclick="closeModal('folder')">Cancel</button>
+    </div>
+  </div>
+
+  <!-- File Viewer Modal -->
+  <div class="modal" id="viewModal">
+    <div class="modal-content">
+      <h2>File Viewer</h2>
+      <textarea id="viewContent"></textarea>
+      <br>
+      <button id="saveButton">Save</button>
+      <button id="deleteButton">Delete File</button>
+      <button onclick="closeModal('view')">Close</button>
+    </div>
+  </div>
+
+  <iframe id="previewFrame" style="display:none;"></iframe>
+
+  <script>
+    let fileSystem = {};
+    let currentPath = [];
+    let lastOpenedFile = null;
+
+    function showModal(type) {
+      document.getElementById(type + 'Modal').style.display = 'flex';
+    }
+
+    function closeModal(type) {
+      document.getElementById(type + 'Modal').style.display = 'none';
+    }
+
+    function createFile() {
+      const name = document.getElementById('fileName').value;
+      const content = document.getElementById('fileContent').value;
+      if (!name) return;
+      let folder = traverse(fileSystem, currentPath);
+      folder[name] = content;
+      log(`√ ${getTime()} created file "${name}"`);
+      render();
+      closeModal('file');
+    }
+
+    function createFolder() {
+      const name = document.getElementById('folderName').value;
+      if (!name) return;
+      let folder = traverse(fileSystem, currentPath);
+      folder[name] = {};
+      log(`√ ${getTime()} created folder "${name}"`);
+      render();
+      closeModal('folder');
+    }
+
+    function traverse(obj, path) {
+      return path.reduce((acc, key) => acc[key], obj);
+    }
+
+    function render() {
+      const fileList = document.getElementById('fileList');
+      fileList.innerHTML = '';
+      let folder = traverse(fileSystem, currentPath);
+      for (let key in folder) {
+        const isFolder = typeof folder[key] === 'object';
+        const div = document.createElement('div');
+        div.textContent = isFolder ? `[Folder] ${key}` : key;
+        div.onclick = () => {
+          if (isFolder) {
+            currentPath.push(key);
+            render();
+          } else {
+            lastOpenedFile = key;
+            document.getElementById('viewContent').value = folder[key];
+            document.getElementById('viewModal').style.display = 'flex';
+          }
+        };
+        fileList.appendChild(div);
+      }
+    }
+
+    function backFolder() {
+      if (currentPath.length) {
+        currentPath.pop();
+        render();
+      }
+    }
+
+    function log(message) {
+      const logList = document.getElementById('logList');
+      const div = document.createElement('div');
+      div.className = 'log';
+      div.textContent = message;
+      logList.appendChild(div);
+    }
+
+    function getTime() {
+      return new Date().toLocaleTimeString();
+    }
+
+    function downloadZip() {
+      alert('Download as ZIP feature is under development.');
+    }
+
+    function testView() {
+      const folder = traverse(fileSystem, currentPath);
+      const blobMap = {};
+
+      function buildBlobs(path, tree) {
+        for (let key in tree) {
+          const val = tree[key];
+          const fullPath = [...path, key].join("/");
+          if (typeof val === 'string') {
+            blobMap[fullPath] = URL.createObjectURL(new Blob([val], { type: 'text/html' }));
+          } else {
+            buildBlobs([...path, key], val);
+          }
+        }
+      }
+
+      buildBlobs([], fileSystem);
+
+      const frame = document.getElementById('previewFrame');
+      if (blobMap['index.html']) {
+        const htmlContent = fileSystem['index.html'];
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        frame.src = url;
+        frame.style.display = 'block';
+      } else {
+        alert('index.html not found in root.');
+      }
+    }
+
+    document.getElementById('deleteButton').onclick = () => {
+      if (!lastOpenedFile) return;
+      const folder = traverse(fileSystem, currentPath);
+      delete folder[lastOpenedFile];
+      log(`× ${getTime()} deleted file "${lastOpenedFile}"`);
+      closeModal('view');
+      render();
+    };
+
+    document.getElementById('saveButton').onclick = () => {
+      if (!lastOpenedFile) return;
+      const folder = traverse(fileSystem, currentPath);
+      folder[lastOpenedFile] = document.getElementById('viewContent').value;
+      log(`√ ${getTime()} saved file "${lastOpenedFile}"`);
+      closeModal('view');
+      render();
+    };
+
+    render();
+  </script>
+</body>
+  </html>
+      
